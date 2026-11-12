@@ -1,0 +1,17 @@
+# ROS 2 workspace build outputs (rebuilt with colcon)
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Recorded data
+ros2_ws/bags/
+
+# Local StarV checkout (the sim conda env installs StarV from GitHub)
+StarV/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Editor
+.vscode/

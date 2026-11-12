@@ -1,0 +1,17 @@
+# Build context = repository root (docker build -t wm_drones/sim .)
+
+# Build outputs, rebuilt inside the image
+PX4-Autopilot/build
+ros2_ws/build
+ros2_ws/install
+ros2_ws/log
+
+# Recorded data and tools not needed in the image
+ros2_ws/bags
+StarV
+.vscode
+**/__pycache__
+
+# Git metadata of the copied sources. PX4-Autopilot/.git is kept: its build needs it (stripped in the px4-build stage)
+ros2_ws/src/**/.git
+simd/.git

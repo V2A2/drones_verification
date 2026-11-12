@@ -1,0 +1,12 @@
+<library path="visualization">
+  <class name="Reachable Set Viewer (Face Lifting)" type="fl_reach.visualization.viz.ReachViz" base_class_type="rqt_gui_py::Plugin">
+    <description>Draws fl_reach/HyperRectangle reachable sets and pose trails from user-selected topics.</description>
+    <qtgui>
+      <group>
+        <label>Visualization</label>
+      </group>
+      <label>Reachable Set Viewer (Face Lifting)</label>
+      <statustip>Plot the reachable sets of the agents</statustip>
+    </qtgui>
+  </class>
+</library>

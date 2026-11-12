@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Standalone launcher: ros2 run probstar_reach reach_viz"""
+import sys
+
+from rqt_gui.main import Main
+
+if __name__ == '__main__':
+    sys.exit(Main().main(sys.argv, standalone='probstar_reach.visualization.viz.ReachViz'))

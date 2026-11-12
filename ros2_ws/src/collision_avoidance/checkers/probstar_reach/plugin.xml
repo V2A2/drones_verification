@@ -1,0 +1,12 @@
+<library path="visualization">
+  <class name="Reachable Set Viewer (ProbStar)" type="probstar_reach.visualization.viz.ReachViz" base_class_type="rqt_gui_py::Plugin">
+    <description>Draws probstar_reach/ProbStar tubes (support and Gaussian contours) and pose trails from user-selected topics.</description>
+    <qtgui>
+      <group>
+        <label>Visualization</label>
+      </group>
+      <label>Reachable Set Viewer (ProbStar)</label>
+      <statustip>Plot the reachable sets of the agents</statustip>
+    </qtgui>
+  </class>
+</library>
