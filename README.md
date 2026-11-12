@@ -1,4 +1,4 @@
-# wm_drones
+# Drones Verification
 
 Multi-drone simulation with online reachability-based collision checking: every drone runs a reachable-set verifier
 (ProbStar or face lifting) and exchanges its reachable sets with the other drones over a shared radio topic.
@@ -153,9 +153,9 @@ docker run -it --rm --name wm_sim --network host --ipc host \
   -e SIM_VERIFIER=fl -e SIM_VIZ=1 -e DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix wm_drones/sim
 ```
 
-#### Gazebo GUI on the host
+## Gazebo GUI on the host
 
-The Gazebo and PX4 modules use `GZ_PARTITION=px4_sim` and `GZ_IP=127.0.0.1` (see `gazebo.mod` and `px4_gz.mod`).
+The Gazebo and PX4 modules use `GZ_PARTITION=px4_sim` and `GZ_IP=127.0.0.1`.
 A Gazebo GUI on the host must use the same values to see the world:
 
 ```bash
