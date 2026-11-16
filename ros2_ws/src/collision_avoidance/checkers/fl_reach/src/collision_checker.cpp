@@ -66,7 +66,7 @@ void collision_checker::rcvd_rs_cb(const fl_reach::msg::HyperRectangle::SharedPt
 
         RCLCPP_WARN(get_logger(), "COLLISION DETECTED with agent %d", sending_agent);
 
-        // GoToCollisionAvoidanceBehavior fails its goal and holds position on this event
+        // px4_drone's random_walk aborts its target, brakes and retreats on this event
         std_msgs::msg::UInt8 collision_msg;
         collision_msg.data = sending_agent;
         collision_pub->publish(collision_msg);

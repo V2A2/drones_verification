@@ -107,11 +107,11 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh \
     && rm -rf build log
 
 COPY simd /wm_drones/simd
-COPY mission_scripts /wm_drones/mission_scripts
 COPY *.mod sim_environment.yml README.md /wm_drones/
-# simd modules of the ROS 2 processes (pixhawk bridge, aerostack2, verifiers), referenced as ros2_ws/<name> by drone.mod
+# simd modules of the ROS 2 processes (state estimate, random walk mission, verifiers), referenced as ros2_ws/<name>
+# by drone.mod and demo.mod
 COPY ros2_ws/*.mod /wm_drones/ros2_ws/
-# Default command: drones.mod, then drones_random_walk.mod after a warm-up
+# Default command: demo.mod (drones + random walk missions)
 COPY --chmod=755 run_sim.sh /wm_drones/run_sim.sh
 
 # The sim conda env is the environment of every process in the container: shells, `docker exec`, simd, and the nodes

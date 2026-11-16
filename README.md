@@ -98,13 +98,12 @@ conda activate sim
 ./run_sim.sh
 ```
 
-This starts the simulation. `run_sim.sh` has several options, given as environment variables:
+This starts the simulation defined in `demo.mod`: four drones, each with its state estimate, its reachability
+verifier and a random walk mission. `run_sim.sh` has several options, given as environment variables:
 
 | Variable       | Default | Meaning                                                                       |
 |----------------|---------|-------------------------------------------------------------------------------|
-| `SIM_WARMUP`   | `120`   | seconds between starting the drones and the missions                          |
 | `SIM_VERIFIER` | `ps`    | reachability checker: `ps` (ProbStar) or `fl` (face lifting)                  |
-| `SIM_SEED`     | `0`     | random walk seed, makes the random walk reproducible                          |
 | `SIM_VIZ`      | `0`     | `1` starts the reachable set viewer of `SIM_VERIFIER` (needs `DISPLAY`)       |
 
 For example, face lifting with the viewer:
@@ -140,7 +139,7 @@ drones:
 docker run -it --rm --name wm_sim --network host --ipc host wm_drones/sim
 ```
 
-The [options](#run-the-simulation) of `run_sim.sh` are given with `-e`, for example `-e SIM_VERIFIER=fl -e SIM_SEED=3`.
+The [options](#run-the-simulation) of `run_sim.sh` are given with `-e`, for example `-e SIM_VERIFIER=fl -e SIM_VIZ=1`.
 
 #### Reachable set viewer
 

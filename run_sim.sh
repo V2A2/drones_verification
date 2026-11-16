@@ -1,15 +1,13 @@
 #!/bin/bash
 #
-# Runs the whole simulation: starts the drones (drones.mod), waits for them to come up, then starts the random walk
-# missions (drones_random_walk.mod). Default command of the Docker image; also runs on the host (terminal set up as in
+# Runs the whole simulation (demo.mod: the drones and their random walk missions), optionally with the reachable set
+# viewer. Default command of the Docker image; also runs on the host (terminal set up as in
 # "Option 1: Local machine > Run the simulation" in the README).
 #
-# Ctrl+C / SIGTERM (docker stop) stops the missions first, then the drones. If either simd exits, the other is stopped.
+# Ctrl+C / SIGTERM (docker stop) closes the viewer, then stops the simulation.
 #
 # Environment (optional):
-#   SIM_WARMUP    seconds between starting the drones and the missions (default: 120)
 #   SIM_VERIFIER  reachability checker, ps (ProbStar) or fl (face lifting) (default: ps)
-#   SIM_SEED      random walk seed (default: 0)
 #   SIM_VIZ       1 starts the reachable set viewer of SIM_VERIFIER (reach_viz), needs DISPLAY (default: 0). Closing
 #                 its window does not stop the simulation.
 #
@@ -19,16 +17,13 @@ set -u
 
 cd "$(dirname "$(readlink -f "$0")")"
 
-warmup=${SIM_WARMUP:-120}
 verifier=${SIM_VERIFIER:-ps}
-seed=${SIM_SEED:-0}
 viz=${SIM_VIZ:-0}
 
 sim_pid=
-walk_pid=
 viz_pid=
 
-# Closes the viewer, stops the missions, then the drones (simd shuts its processes down on SIGTERM), and exits with $1.
+# Closes the viewer, stops the simulation (simd shuts its processes down on SIGTERM), and exits with $1.
 # The viewer gets SIGINT: rqt closes its window on it and saves the plugin settings (the added topics); on SIGTERM it
 # would die without saving.
 stop() {
@@ -37,12 +32,10 @@ stop() {
         kill -INT "$viz_pid" 2>/dev/null
         wait "$viz_pid"
     fi
-    for pid in $walk_pid $sim_pid; do
-        if kill -0 "$pid" 2>/dev/null; then
-            kill -TERM "$pid" 2>/dev/null
-            wait "$pid"
-        fi
-    done
+    if kill -0 "$sim_pid" 2>/dev/null; then
+        kill -TERM "$sim_pid" 2>/dev/null
+        wait "$sim_pid"
+    fi
     exit "$1"
 }
 trap 'stop 130' INT
@@ -70,31 +63,15 @@ start_viz() {
 
 # Background jobs of this non-interactive shell ignore SIGINT, so Ctrl+C reaches only this script and the shutdown
 # order above is kept
-python3 simd/simd.py sim drones.mod -c verifier="$verifier" &
+python3 simd/simd.py sim demo.mod -c verifier="$verifier" &
 sim_pid=$!
+echo "[run_sim] simulation started (verifier $verifier)"
 
 if [ "$viz" = 1 ]; then
     start_viz
 fi
 
-echo "[run_sim] drones started, starting the random walk missions in ${warmup}s"
-# Slept in the background so that the traps run during the warm-up. Returns early if the drones' simd exits.
-sleep "$warmup" &
-sleep_pid=$!
-wait -n "$sim_pid" "$sleep_pid"
-kill "$sleep_pid" 2>/dev/null
-if ! kill -0 "$sim_pid" 2>/dev/null; then
-    wait "$sim_pid"
-    code=$?
-    echo "[run_sim] drones.mod exited with code $code during the warm-up" >&2
-    exit "$code"
-fi
-
-python3 simd/simd.py sim drones_random_walk.mod -c seed="$seed" &
-walk_pid=$!
-echo "[run_sim] random walk missions started (seed $seed)"
-
-wait -n "$sim_pid" "$walk_pid"
+wait "$sim_pid"
 code=$?
-echo "[run_sim] a simd instance exited with code $code, stopping the simulation" >&2
+echo "[run_sim] simd exited with code $code" >&2
 stop "$code"

@@ -5,10 +5,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "safetyChecker.h"
 #include "fl_reach/msg/hyper_rectangle.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
-#include "geometry_msgs/msg/twist_stamped.hpp"
-#include "nav_msgs/msg/odometry.hpp"
-#include <eigen3/Eigen/Geometry>
+#include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
+#include "geometry_msgs/msg/twist_with_covariance_stamped.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include <string>
 #include <cmath>
@@ -67,10 +65,11 @@ class agent : public rclcpp::Node {
 
         float reachTime; //Lookahead horizon (s), set from the reachTime parameter
 
-        //Std of position and velocity (earth frame) from the odom covariance
+        //Std of position and velocity (earth frame), from the state/pose and state/twist covariances
         float posStd[3] = {0.0, 0.0, 0.0};
         float velStd[3] = {0.0, 0.0, 0.0};
-        bool haveStd = false;
+        bool havePose = false;
+        bool haveTwist = false;
 
         //Ploting locations
         std::string plotFile;
@@ -81,9 +80,8 @@ class agent : public rclcpp::Node {
 
         //ROS publishers and subscribers
         rclcpp::Publisher<fl_reach::msg::HyperRectangle>::SharedPtr rect_publisher; //<-- Topic where reachable state gets published
-        rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr pose_subscriber;
-        rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr twist_subscriber;
-        rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscriber;
+        rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_subscriber;
+        rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_subscriber;
 
         //ROS timers
         float reachTimeout = 0.005;
@@ -152,40 +150,26 @@ class agent : public rclcpp::Node {
             msg.vz.max = rect.intervals[5].max;
         }
 
-        //Orientation of the latest pose (earth -> base_link), used to rotate body-frame twists
-        Eigen::Quaterniond orientation = Eigen::Quaterniond::Identity();
-        std::string pose_frame;
-
-        void pose_cb( const geometry_msgs::msg::PoseStamped::SharedPtr msg ) {
-            /* as2 self_localization/pose: position in the earth frame (ENU) */
-            x = msg->pose.position.x;
-            y = msg->pose.position.y;
-            z = msg->pose.position.z;
-            orientation = Eigen::Quaterniond(msg->pose.orientation.w, msg->pose.orientation.x,
-                                             msg->pose.orientation.y, msg->pose.orientation.z).normalized();
-            pose_frame = msg->header.frame_id;
-        }
-
-        void twist_cb( const geometry_msgs::msg::TwistStamped::SharedPtr msg ) {
-            /* as2 self_localization/twist is stamped in base_link, the reachable set needs the earth frame */
-            Eigen::Vector3d v(msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z);
-            if (msg->header.frame_id != pose_frame) {
-                v = orientation * v;
-            }
-            vx = v.x();
-            vy = v.y();
-            vz = v.z();
-        }
-
-        void odom_cb( const nav_msgs::msg::Odometry::SharedPtr msg ) {
-            /* self_localization carries no covariance, so std comes from odom (same as probstar_reach).
-               odom -> earth is a pure translation, so the position variance is unchanged. twist.covariance is
-               already the ENU (earth) velocity variance (as2_platform_pixhawk), so it needs no rotation. */
+        void pose_cb( const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg ) {
+            /* px4_drone state/pose: position in the earth frame (ENU), common to all drones */
+            x = msg->pose.pose.position.x;
+            y = msg->pose.pose.position.y;
+            z = msg->pose.pose.position.z;
             for (int i = 0; i < 3; i++) {
                 posStd[i] = std::sqrt(msg->pose.covariance[7 * i]);
+            }
+            havePose = true;
+        }
+
+        void twist_cb( const geometry_msgs::msg::TwistWithCovarianceStamped::SharedPtr msg ) {
+            /* px4_drone state/twist: linear velocity in the earth frame, which the reachable set needs */
+            vx = msg->twist.twist.linear.x;
+            vy = msg->twist.twist.linear.y;
+            vz = msg->twist.twist.linear.z;
+            for (int i = 0; i < 3; i++) {
                 velStd[i] = std::sqrt(msg->twist.covariance[7 * i]);
             }
-            haveStd = true;
+            haveTwist = true;
         }
 
 };

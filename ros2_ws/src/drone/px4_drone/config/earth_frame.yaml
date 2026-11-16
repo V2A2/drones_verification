@@ -1,0 +1,9 @@
+# Shared earth frame of all drones (see include/px4_drone/earth_frame.hpp): ENU around this geodetic origin.
+# Used by state_estimate (what the verifiers see) and random_walk (where the drones are sent), so keep it in one place.
+# spherical_coordinates of the PX4 baylands world.
+/**:
+  ros__parameters:
+    origin:
+      lat: 37.412173071650805
+      lon: -121.998878727967
+      alt: 38.0

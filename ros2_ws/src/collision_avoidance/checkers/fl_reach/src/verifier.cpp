@@ -10,13 +10,11 @@ agent::agent() : rclcpp::Node("verifier") {
 
     using std::placeholders::_1;
 
-    //State from the as2 state estimator (resolved in the drone namespace)
-    pose_subscriber = create_subscription<geometry_msgs::msg::PoseStamped>(
-        "self_localization/pose", rclcpp::SensorDataQoS(), std::bind(&agent::pose_cb, this, _1));
-    twist_subscriber = create_subscription<geometry_msgs::msg::TwistStamped>(
-        "self_localization/twist", rclcpp::SensorDataQoS(), std::bind(&agent::twist_cb, this, _1));
-    odom_subscriber = create_subscription<nav_msgs::msg::Odometry>(
-        "sensor_measurements/odom", rclcpp::SensorDataQoS(), std::bind(&agent::odom_cb, this, _1));
+    //State from px4_drone's state_estimate, with its covariance (resolved in the drone namespace)
+    pose_subscriber = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        "state/pose", rclcpp::SensorDataQoS(), std::bind(&agent::pose_cb, this, _1));
+    twist_subscriber = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
+        "state/twist", rclcpp::SensorDataQoS(), std::bind(&agent::twist_cb, this, _1));
 
     //Latched in ROS 1 -> transient_local in ROS 2
     auto latched = rclcpp::QoS(1).transient_local();
@@ -47,8 +45,8 @@ agent::agent() : rclcpp::Node("verifier") {
 
 void agent::compute_rs() {
 
-    if (!haveStd) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Waiting for sensor_measurements/odom");
+    if (!havePose || !haveTwist) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Waiting for state/pose and state/twist");
         return;
     }
 

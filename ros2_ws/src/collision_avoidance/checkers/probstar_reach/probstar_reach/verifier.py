@@ -4,8 +4,7 @@ import time
 import message_filters
 import numpy as np
 import rclpy
-from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseWithCovarianceStamped, TwistWithCovarianceStamped
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
@@ -37,7 +36,7 @@ def quat_to_rot(x, y, z, w):
 
 class Verifier(Node):
     """
-    Propagates a tube of nsteps ProbStars from the agent's odometry, step k = 1..nsteps advanced from the initial
+    Propagates a tube of nsteps ProbStars from the agent's state estimate, step k = 1..nsteps advanced from the initial
     state to t0 + k*dt, and publishes it as mean/std per step.
 
     After each own tube it checks the newest tube received from every other agent, step by
@@ -62,7 +61,7 @@ class Verifier(Node):
         if round(self.dt * 1e9) <= 0 or self.nsteps < 1:
             raise ValueError('dt must be at least 1 ns and nsteps must be positive')
 
-        # Pitch/roll/yaw std (rad) used when the odom pose covariance has none
+        # Pitch/roll/yaw std (rad) used when the state/pose covariance has none
         self.attitude_std = self.declare_parameter('attitude_std', 0.02).value
 
         # Unique id of the agent, 0..255 (no sensible default, two agents with the same id ignore each other)
@@ -88,24 +87,24 @@ class Verifier(Node):
 
         self.x_mean = None
         self.x_std = None
-        self.odom_stamp = None
+        self.state_stamp = None
         self.rot = None
         self.u_std = None
 
-        # Position from self_localization/pose (common earth frame, like face_lifting). The odom position is in
-        # the per-drone odom frame (origin = spawn point), so drones would be offset from each other.
-        # raw_odometry publishes the pose from each odom with the same stamp, so the two are paired by exact stamp.
+        # State from px4_drone's state_estimate, in the earth frame common to all drones (like face_lifting), with
+        # its covariance. Both topics are published from each PX4 odometry with the same stamp, so they are paired by
+        # exact stamp.
         pose_sub = message_filters.Subscriber(
-            self, PoseStamped, 'self_localization/pose', qos_profile=qos_profile_sensor_data)
-        odom_sub = message_filters.Subscriber(
-            self, Odometry, 'sensor_measurements/odom', qos_profile=qos_profile_sensor_data)
-        message_filters.TimeSynchronizer([pose_sub, odom_sub], 10).registerCallback(self.state_cb)
+            self, PoseWithCovarianceStamped, 'state/pose', qos_profile=qos_profile_sensor_data)
+        twist_sub = message_filters.Subscriber(
+            self, TwistWithCovarianceStamped, 'state/twist', qos_profile=qos_profile_sensor_data)
+        message_filters.TimeSynchronizer([pose_sub, twist_sub], 10).registerCallback(self.state_cb)
         # Latched in ROS 1 -> transient_local in ROS 2
         self.star_pub = self.create_publisher(
             ProbStarMsg, 'my_rs', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_subscription(ProbStarMsg, 'received_rs', self.rcvd_cb, 30)
 
-        # GoToCollisionAvoidanceBehavior fails its goal and holds position on this event
+        # px4_drone's random_walk aborts its target, retreats and holds position on this event
         self.collision_pub = self.create_publisher(UInt8, 'collision_detected', 10)
         # [agent id, max prob, min prob, latest, earliest checked time - now (s)], one per checked tube
         self.prob_pub = self.create_publisher(Float32MultiArray, 'collision_prob', 10)
@@ -122,23 +121,20 @@ class Verifier(Node):
         self.timing_pair_pub = self.create_publisher(Float32MultiArray, 'timing/pair', 10)
         self.create_timer(period, self.compute_reach)
 
-    def state_cb(self, pose: PoseStamped, msg: Odometry):
-        p = pose.pose.position
-        o = msg.pose.pose.orientation
-
-        # Odometry twist is expressed in child_frame_id (body), the reachable set needs the earth frame
-        lin = msg.twist.twist.linear
+    def state_cb(self, pose: PoseWithCovarianceStamped, twist: TwistWithCovarianceStamped):
+        # Both in the earth frame: position, and linear velocity (not body), so no rotation is needed for x
+        p = pose.pose.pose.position
+        o = pose.pose.pose.orientation
+        v = twist.twist.twist.linear
+        # Attitude (body FLU -> earth), for the roll/pitch input u
         self.rot = quat_to_rot(o.x, o.y, o.z, o.w)
-        v = self.rot @ np.array([lin.x, lin.y, lin.z])
 
-        self.x_mean = np.array([p.x, p.y, p.z, *v])
-        self.odom_stamp = msg.header.stamp
+        self.x_mean = np.array([p.x, p.y, p.z, v.x, v.y, v.z])
+        self.state_stamp = pose.header.stamp
 
-        # self_localization carries no covariance, so std comes from odom. odom -> earth is a pure translation,
-        # so the position variance is unchanged. twist.covariance is NOT body frame despite the twist being body:
-        # as2_platform_pixhawk fills it with the ENU (earth) velocity variance, so it needs no rotation here.
-        pose_cov = np.array(msg.pose.covariance).reshape(6, 6)
-        twist_cov = np.array(msg.twist.covariance).reshape(6, 6)
+        # Earth-frame position and velocity variances, the diagonals of the covariances
+        pose_cov = np.array(pose.pose.covariance).reshape(6, 6)
+        twist_cov = np.array(twist.twist.covariance).reshape(6, 6)
         self.x_std = np.sqrt(np.concatenate((
             np.diag(pose_cov)[:3], np.diag(twist_cov)[:3])))
         # Attitude variance, same order as u = [roll, pitch, yaw], falls back to attitude_std when unset
@@ -148,12 +144,12 @@ class Verifier(Node):
     def compute_reach(self):
         if self.x_mean is None:
             self.get_logger().warn(
-                'Waiting for self_localization/pose and sensor_measurements/odom', throttle_duration_sec=2.0)
+                'Waiting for state/pose and state/twist', throttle_duration_sec=2.0)
             return
 
         start = time.perf_counter()
-        odom_age = (self.get_clock().now() - Time.from_msg(self.odom_stamp)).nanoseconds / 1e9
-        t0 = Time.from_msg(self.odom_stamp)
+        state_age = (self.get_clock().now() - Time.from_msg(self.state_stamp)).nanoseconds / 1e9
+        t0 = Time.from_msg(self.state_stamp)
         # x/y driven by the held roll/pitch (fixed altitude, linearized there), z constant velocity
         u_mean = rot_to_euler(self.rot)  # [roll, pitch, yaw], yaw is a placeholder (zero Bd column)
         X0 = build_probstar(self.x_mean, self.x_std)
@@ -169,7 +165,7 @@ class Verifier(Node):
 
         encode_start = time.perf_counter()
         out = ProbStarMsg()
-        out.t0 = self.odom_stamp
+        out.t0 = self.state_stamp
         out.dt = float(self.dt)
         out.id = self.sysid
         # The receiver rebuilds each advanced star with build_probstar(mean, std). Its generators are not diagonal
@@ -193,7 +189,7 @@ class Verifier(Node):
             f't+{self.nsteps * self.dt:.3f}s roll/pitch/yaw={np.round(u_mean, 3).tolist()} '
             f'center={np.round(tube[-1][1].V[:, 0], 3).tolist()} '
             f'lin_err={np.round(lin_err, 5).tolist()} | reach {reach_s * 1e3:.3f}ms, '
-            f'encode+pub {encode_pub_s * 1e3:.3f}ms, total {total_s * 1e3:.3f}ms, odom age {odom_age:.3f}s | '
+            f'encode+pub {encode_pub_s * 1e3:.3f}ms, total {total_s * 1e3:.3f}ms, state age {state_age:.3f}s | '
             f'{len(results)} tubes' + ''.join(f'; {r}' for r in results))
 
     def rcvd_cb(self, msg: ProbStarMsg):
@@ -222,7 +218,7 @@ class Verifier(Node):
 
             # Time alignment setup shared by every pair: pointer skip and Ad(Δt)
             setup_start = time.perf_counter()
-            # Skip the received steps earlier than the first own step (odom + dt, so while the odom age is below dt
+            # Skip the received steps earlier than the first own step (state + dt, so while the state age is below dt
             # this also skips the ones already passed)
             m = 0
             while m < len(other_tube) and other_tube[m][0] < own_tube[0][0]:

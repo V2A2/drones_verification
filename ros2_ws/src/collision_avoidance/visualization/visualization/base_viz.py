@@ -13,7 +13,7 @@ and TITLE and implements how its reachable set is converted, projected and drawn
 All hooks are static (no plugin state), the canvases call them on the class.
 
 Pick a reachable set topic (e.g. /drone1/my_rs or /drone2/received_rs, only topics of MSG_TYPE are listed) and a pose
-topic (e.g. /drone1/self_localization/pose, or (none)) and press Add. Every set is drawn as received, with the trail of
+topic (e.g. /drone1/state/pose, or (none)) and press Add. Every set is drawn as received, with the trail of
 its pose topic over the last TRAIL_SEC. Every added topic gets its own color.
 
     rqt                                     # Plugins -> Visualization -> Reachable Set Viewer (<checker>)
@@ -23,7 +23,7 @@ import threading
 import time
 from collections import deque
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from python_qt_binding.QtCore import Qt, QTimer
 from python_qt_binding.QtGui import QColor
 from python_qt_binding.QtWidgets import (
@@ -35,7 +35,9 @@ from rosidl_runtime_py.utilities import get_message
 from .canvas import Canvas2D, Canvas3D
 
 AXES = ('x', 'y', 'z', 'vx', 'vy', 'vz')  # state axes, the order of the projection indices
-POSE_TYPE = 'geometry_msgs/msg/PoseStamped'
+POSE_TYPE = 'geometry_msgs/msg/PoseWithCovarianceStamped'
+POSE_SUFFIX = '/state/pose'  # <namespace>/state/pose, published by px4_drone's state_estimate
+OLD_POSE_SUFFIX = '/self_localization/pose'  # the as2 pose topic, in settings saved before
 NO_POSE = '(none)'
 STALE_AFTER = 1.0  # s without a message before a set is drawn as stale
 REDRAW_MS = 100
@@ -163,10 +165,10 @@ class ReachVizBase(Plugin):
             self._match_pose(self._topic_box.currentText())
 
     def _match_pose(self, topic):
-        """Pick <namespace>/self_localization/pose for the chosen RS topic (the verifier takes its position from it)"""
+        """Pick <namespace>/state/pose for the chosen RS topic (the verifier takes its position from it)"""
         ns, name = topic.strip().rsplit('/', 1) if '/' in topic else ('', topic)
         # received_rs lives in the receiver's namespace, that pose is not the sender's, so leave it to the user
-        pose = f'{ns}/self_localization/pose'
+        pose = f'{ns}{POSE_SUFFIX}'
         if name != 'received_rs' and self._pose_box.findText(pose) >= 0:
             self._pose_box.setCurrentText(pose)
         else:
@@ -182,9 +184,9 @@ class ReachVizBase(Plugin):
         self._subs[topic] = self._node.create_subscription(
             self._msg_class, topic, lambda msg, t=topic: self._on_msg(t, msg), qos)
         if pose_topic and pose_topic != NO_POSE:
-            # self_localization/pose is published best effort
+            # state/pose is published best effort
             self._pose_subs[topic] = self._node.create_subscription(
-                PoseStamped, pose_topic, lambda msg, t=topic: self._on_pose(t, msg), qos_profile_sensor_data)
+                PoseWithCovarianceStamped, pose_topic, lambda msg, t=topic: self._on_pose(t, msg), qos_profile_sensor_data)
         self._colors[topic] = QColor(COLORS[self._next_color % len(COLORS)])
         self._next_color += 1
         item = QListWidgetItem(_label(topic))
@@ -211,7 +213,7 @@ class ReachVizBase(Plugin):
             self._latest[topic] = (data, time.monotonic(), msg.id)
 
     def _on_pose(self, topic, msg):  # executor thread
-        p = msg.pose.position
+        p = msg.pose.pose.position
         with self._lock:
             now = time.monotonic()
             trail = self._trails.setdefault(topic, deque())
@@ -266,6 +268,9 @@ class ReachVizBase(Plugin):
         saved = instance_settings.value('topics')
         for pair in (saved.split(',') if saved else []):
             topic, _, pose_topic = pair.partition('|')
+            # Settings saved with the as2 stack: its pose topic is now px4_drone's state/pose
+            if pose_topic.endswith(OLD_POSE_SUFFIX):
+                pose_topic = pose_topic[:-len(OLD_POSE_SUFFIX)] + POSE_SUFFIX
             if topic:
                 self._topic_box.setEditText(topic)
                 self._pose_box.setEditText(pose_topic or NO_POSE)

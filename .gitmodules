@@ -4,12 +4,9 @@
 [submodule "simd"]
 	path = simd
 	url = git@github.com:zrzz-hq/simd.git
-[submodule "ros2_ws/src/as2/aerostack2"]
-	path = ros2_ws/src/as2/aerostack2
-	url = git@github.com:zrzz-hq/aerostack2.git
-[submodule "ros2_ws/src/as2/as2_platform_pixhawk"]
-	path = ros2_ws/src/as2/as2_platform_pixhawk
-	url = git@github.com:zrzz-hq/as2_platform_pixhawk.git
 [submodule "ros2_ws/src/px4/px4_msgs"]
 	path = ros2_ws/src/px4/px4_msgs
 	url = https://github.com/PX4/px4_msgs.git
+[submodule "ros2_ws/src/px4/px4-ros2-interface-lib"]
+	path = ros2_ws/src/px4/px4-ros2-interface-lib
+	url = https://github.com/Auterion/px4-ros2-interface-lib.git

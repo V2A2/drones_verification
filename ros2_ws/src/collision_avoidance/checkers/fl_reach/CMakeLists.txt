@@ -8,7 +8,6 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   msg/Interval.msg
@@ -22,7 +21,7 @@ include_directories(include)
 foreach(node verifier collision_checker)
   add_executable(${node} src/${node}.cpp)
   target_compile_features(${node} PUBLIC cxx_std_20)
-  ament_target_dependencies(${node} rclcpp std_msgs geometry_msgs nav_msgs)
+  ament_target_dependencies(${node} rclcpp std_msgs geometry_msgs)
   target_link_libraries(${node} ${cpp_typesupport_target})
 endforeach()
 
